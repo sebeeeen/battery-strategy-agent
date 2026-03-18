@@ -326,15 +326,15 @@ class BatteryAnalysisState(TypedDict):
 
 ## 9-1. 전체 워크플로우
 
-![전체 워크플로우](./assets/전체%20워크플로우.png)
+![전체 워크플로우](<./assets/전체 워크플로우.png>)
 
 ## 9-2. 병렬 실행 시퀀스 다이어그램
 
-![병렬 실행 시퀀스](./assets/병렬%20실행%20시퀀스%20다이어그램.png)
+![병렬 실행 시퀀스](<./assets/병렬 실행 시퀀스 다이어그램.png>)
 
 ## 9-3. Agentic RAG 내부 플로우
 
-![Agentic RAG 플로우](./assets/Agentic%20RAG%20내부%20플로우.png)
+![Agentic RAG 플로우](./assets/Agentic_RAG_내부_플로우.png)
 
 ---
 
