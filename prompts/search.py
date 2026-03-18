@@ -1,15 +1,13 @@
 """
-prompts/search.py
 Search Agent 프롬프트 — 확증 편향 방지를 위한 긍정/부정 쌍 쿼리 전략.
 
-설계 원칙:
 - 각 주제에 대해 긍정적 측면 쿼리 + 부정적/비판적 측면 쿼리를 쌍으로 생성
 - 두 관점의 검색 결과를 모두 수집해 균형 잡힌 정보 확보
 """
 
 from langchain_core.prompts import ChatPromptTemplate
 
-# ─── Query Pair Generator ─────────────────────────────────────────────────────
+# Query Pair Generator
 
 SEARCH_QUERY_GEN_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
@@ -29,7 +27,7 @@ SEARCH_QUERY_GEN_PROMPT = ChatPromptTemplate.from_messages([
      "Generate balanced search query pair:"),
 ])
 
-# ─── Predefined Balanced Query Pairs ─────────────────────────────────────────
+# Predefined Balanced Query Pairs
 # 확증 편향 방지를 위한 사전 정의 긍정/부정 쌍 쿼리
 
 BALANCED_QUERY_PAIRS = [
@@ -66,7 +64,7 @@ BALANCED_QUERY_PAIRS = [
 ]
 
 
-# ─── Search Result Summarization ─────────────────────────────────────────────
+# Search Result Summarization
 
 SEARCH_SUMMARIZE_PROMPT = ChatPromptTemplate.from_messages([
     ("system",

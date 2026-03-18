@@ -1,24 +1,3 @@
-"""
-app.py
-Battery Strategy Analysis Multi-Agent System — 메인 실행 스크립트.
-
-실행 방법:
-  1. PDF 파일 준비:
-       data/lges/ 에 LGES PDF 복사
-       data/catl/ 에 CATL PDF 복사
-       data/market/ 에 IEA EV Outlook PDF 복사
-
-  2. 문서 인덱싱 (최초 1회):
-       python retrieval/ingest.py
-
-  3. 보고서 생성:
-       python app.py
-
-  4. 결과 확인:
-       outputs/agent_report.md  (Markdown)
-       outputs/agent_report.pdf (PDF)
-"""
-
 import os
 import sys
 import time
@@ -26,7 +5,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-# ─── 경로 설정 ────────────────────────────────────────────────────────────────
+# 경로 설정
 BASE_DIR = Path(__file__).parent
 sys.path.insert(0, str(BASE_DIR))
 
@@ -45,12 +24,11 @@ def inject_swot_grid_md(report_md: str) -> str:
     import re
 
     def extract_swot_items(text: str, keyword: str) -> str:
-        """S/W/O/T 항목 텍스트 추출 — 다음 키워드 전까지."""
         keywords = [r"[*#\s]*W[\s\-–—:(]", r"[*#\s]*O[\s\-–—:(]",
                     r"[*#\s]*T[\s\-–—:(]", r"[*#\s]*S[\s\-–—:(]",
                     r"####", r"###", r"##", r"---"]
         pattern = re.compile(
-            rf"(?:^|\n)[*#\s]*{keyword}[\s\-–—:(][^\n]*\n(.*?)(?=(?:\n[*#\s]*(?:{'|'.join(['W','O','T','S'])})[\\s\\-–—:(]|\n###|\n##|\Z)))",
+            rf"(?:^|\n)[*#\s]*{keyword}[\s\-–—:(][^\n]*\n(.*?)(?=(?:\n[*#\s]*(?:{'|'.join(['W','O','T','S'])})[\s\-–—:(]|\n###|\n##|\Z))",
             re.DOTALL | re.IGNORECASE
         )
         m = pattern.search(text)
@@ -70,7 +48,6 @@ def inject_swot_grid_md(report_md: str) -> str:
         return ''
 
     def build_swot_grid(company_label: str, swot_text: str) -> str:
-        """SWOT 텍스트 블록 → 2x2 그리드 HTML."""
         s = extract_swot_items(swot_text, 'S')
         w = extract_swot_items(swot_text, 'W')
         o = extract_swot_items(swot_text, 'O')
@@ -102,11 +79,10 @@ def inject_swot_grid_md(report_md: str) -> str:
     {t or '<p>-</p>'}
   </div>
 </div>
-<div class="swot-label-row"><span>🌍 외부 요인</span><span></span></div>
+<div class="swot-label-row"><span>외부 요인</span><span></span></div>
 </div>
 """
 
-    # SWOT 섹션 찾기 — "LGES SWOT" 또는 "CATL SWOT" 블록 교체
     swot_pattern = re.compile(
         r'(#{2,4}[^\n]*SWOT[^\n]*\n)(.*?)(?=\n#{1,4}\s|\Z)',
         re.DOTALL | re.IGNORECASE
@@ -130,20 +106,20 @@ def check_env() -> bool:
     ok = True
 
     if not os.getenv("OPENAI_API_KEY"):
-        print("❌ OPENAI_API_KEY 가 설정되지 않았습니다.")
+        print("OPENAI_API_KEY 가 설정되지 않았습니다.")
         print("   .env 파일에 OPENAI_API_KEY=sk-... 를 추가해주세요.")
         ok = False
 
     if not os.getenv("TAVILY_API_KEY"):
-        print("⚠️  TAVILY_API_KEY 가 없습니다. 웹 검색이 비활성화됩니다.")
+        print("TAVILY_API_KEY 가 없습니다. 웹 검색이 비활성화됩니다.")
 
     return ok
 
 
 def prepare_data_folders(uploads_dir: str = None):
     """
-    uploads 폴더에서 data/ 하위 폴더로 PDF 자동 복사.
-    직접 실행 시 편의 기능: data/ 에 이미 파일이 있으면 스킵.
+    uploads 폴더에서 data/ 하위 폴더로 PDF 자동 복사
+    직접 실행 시 편의 기능: data/ 에 이미 파일이 있으면 스킵
     """
     if uploads_dir is None:
         return
@@ -171,32 +147,17 @@ def prepare_data_folders(uploads_dir: str = None):
                 break
 
 
-def save_report(report_md: str) -> tuple[str, str]:
-    """보고서를 Markdown 및 PDF로 저장."""
-    OUTPUTS_DIR.mkdir(exist_ok=True)
+def _build_report_html(report_md: str) -> str:
+    """Markdown → 스타일 적용된 HTML 문자열 변환 (PDF/HTML 공용)."""
+    import markdown as _md
 
-    # Markdown 저장
-    md_path = OUTPUTS_DIR / REPORT_FILENAME
-    with open(md_path, "w", encoding="utf-8") as f:
-        f.write(report_md)
-    print(f"\n✅ Markdown saved: {md_path}")
+    processed_md = inject_swot_grid_md(report_md)
+    html_body = _md.markdown(
+        processed_md,
+        extensions=["tables", "fenced_code", "toc"],
+    )
 
-    # PDF 변환 (weasyprint)
-    pdf_path = OUTPUTS_DIR / REPORT_PDF_FILENAME
-    try:
-        import markdown
-        from weasyprint import HTML, CSS
-
-        # SWOT 섹션을 시각적 2x2 그리드로 변환 (마크다운 → HTML 전 처리)
-        processed_md = inject_swot_grid_md(report_md)
-
-        html_content = markdown.markdown(
-            processed_md,
-            extensions=["tables", "fenced_code", "toc"],
-        )
-
-        # HTML 래퍼 (스타일 포함)
-        full_html = f"""<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -207,7 +168,8 @@ def save_report(report_md: str) -> tuple[str, str]:
     line-height: 1.65;
     color: #1a1a1a;
   }}
-  h1 {{ font-size: 18pt; color: #1a3a5c; border-bottom: 2px solid #1a3a5c; padding-bottom: 6px; margin-top: 0; }}
+  h1 {{ font-size: 18pt; color: #1a3a5c; border-bottom: 2px solid #1a3a5c;
+        padding-bottom: 6px; margin-top: 0; }}
   h2 {{ font-size: 14pt; color: #2c5f8a; margin-top: 22px; margin-bottom: 8px; }}
   h3 {{ font-size: 12pt; color: #3a7ab5; margin-top: 16px; margin-bottom: 6px; }}
   h4 {{ font-size: 11pt; color: #444; margin-top: 12px; margin-bottom: 4px; }}
@@ -215,50 +177,44 @@ def save_report(report_md: str) -> tuple[str, str]:
   ul, ol {{ margin: 6px 0; padding-left: 20px; }}
   li {{ margin: 3px 0; }}
   table {{
-    border-collapse: collapse;
-    width: 100%;
-    margin: 12px 0;
-    font-size: 9.5pt;
+    border-collapse: collapse; width: 100%;
+    margin: 12px 0; font-size: 9.5pt;
   }}
   th {{
-    background-color: #1a3a5c;
-    color: white;
-    padding: 7px 10px;
-    text-align: left;
+    background-color: #1a3a5c; color: white;
+    padding: 7px 10px; text-align: left;
   }}
   td {{ border: 1px solid #ddd; padding: 6px 10px; vertical-align: top; }}
   tr:nth-child(even) {{ background-color: #f5f8fc; }}
   code {{ background: #f4f4f4; padding: 2px 4px; border-radius: 3px; font-size: 9pt; }}
+  pre {{ background: #f4f4f4; padding: 10px 14px; border-radius: 4px;
+         overflow-x: auto; font-size: 9pt; }}
   blockquote {{
     border-left: 4px solid #2c5f8a;
-    margin: 8px 0;
-    padding-left: 14px;
-    color: #555;
+    margin: 8px 0; padding-left: 14px; color: #555;
   }}
   hr {{ border: none; border-top: 1px solid #ddd; margin: 16px 0; }}
+  a {{ color: #1565c0; text-decoration: none; word-break: break-all; }}
 
-  /* ── SWOT 2x2 그리드 ── */
+  /* ── REFERENCE 섹션 ── */
+  h1:last-of-type + ul li, h2:last-of-type + ul li {{
+    font-size: 9pt; line-height: 1.5;
+  }}
+
+  /* ── SWOT 2×2 그리드 ── */
   .swot-grid {{
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto;
-    gap: 0;
-    width: 100%;
+    gap: 0; width: 100%;
     margin: 14px 0 20px 0;
     border: 2px solid #ccc;
-    border-radius: 6px;
-    overflow: hidden;
+    border-radius: 6px; overflow: hidden;
     font-size: 9.5pt;
   }}
-  .swot-cell {{
-    padding: 12px 14px;
-    vertical-align: top;
-  }}
+  .swot-cell {{ padding: 12px 14px; vertical-align: top; }}
   .swot-cell-title {{
-    font-size: 11pt;
-    font-weight: bold;
-    margin-bottom: 8px;
-    display: block;
+    font-size: 11pt; font-weight: bold;
+    margin-bottom: 8px; display: block;
   }}
   .swot-s {{ background-color: #e8f5e9; border-right: 1px solid #ccc; border-bottom: 1px solid #ccc; }}
   .swot-s .swot-cell-title {{ color: #2e7d32; }}
@@ -268,44 +224,109 @@ def save_report(report_md: str) -> tuple[str, str]:
   .swot-o .swot-cell-title {{ color: #1565c0; }}
   .swot-t {{ background-color: #fce4ec; }}
   .swot-t .swot-cell-title {{ color: #b71c1c; }}
-  .swot-axis-label {{
-    text-align: center;
-    font-size: 8pt;
-    color: #888;
-    margin: 2px 0 6px 0;
-  }}
-  .swot-wrapper {{
-    margin: 10px 0 20px 0;
-  }}
+  .swot-wrapper {{ margin: 10px 0 20px 0; }}
   .swot-label-row {{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    font-size: 8pt;
-    color: #666;
-    text-align: center;
-    margin-bottom: 2px;
-    font-style: italic;
+    display: grid; grid-template-columns: 1fr 1fr;
+    font-size: 8pt; color: #666;
+    text-align: center; margin-bottom: 2px; font-style: italic;
   }}
 
   @page {{
     margin: 1.5cm 1.8cm;
-    @bottom-center {{ content: counter(page) " / " counter(pages); font-size: 8.5pt; color: #888; }}
+    @bottom-center {{
+      content: counter(page) " / " counter(pages);
+      font-size: 8.5pt; color: #888;
+    }}
   }}
 </style>
 </head>
 <body>
-{html_content}
+{html_body}
 </body>
 </html>"""
 
-        HTML(string=full_html).write_pdf(str(pdf_path))
-        print(f"✅ PDF saved: {pdf_path}")
 
+def _save_pdf_weasyprint(html: str, pdf_path: Path) -> bool:
+    """weasyprint으로 PDF 저장 시도. 성공 시 True 반환."""
+    try:
+        from weasyprint import HTML
+        HTML(string=html).write_pdf(str(pdf_path))
+        return True
     except ImportError:
-        print("⚠️  weasyprint/markdown 미설치. PDF 변환 스킵.")
-        print(f"   pip install weasyprint markdown 후 재실행")
+        return False
     except Exception as e:
-        print(f"⚠️  PDF 변환 오류: {e}")
+        print(f"  [weasyprint] 오류: {e}")
+        return False
+
+
+def _save_pdf_pdfkit(html: str, pdf_path: Path) -> bool:
+    """pdfkit(wkhtmltopdf)으로 PDF 저장 시도. 성공 시 True 반환."""
+    try:
+        import pdfkit
+        options = {
+            "encoding": "UTF-8",
+            "page-size": "A4",
+            "margin-top": "1.5cm",
+            "margin-bottom": "1.5cm",
+            "margin-left": "1.8cm",
+            "margin-right": "1.8cm",
+            "quiet": "",
+        }
+        pdfkit.from_string(html, str(pdf_path), options=options)
+        return True
+    except ImportError:
+        return False
+    except Exception as e:
+        print(f"  [pdfkit] 오류: {e}")
+        return False
+
+
+def save_report(report_md: str) -> tuple[str, str]:
+    OUTPUTS_DIR.mkdir(exist_ok=True)
+
+    # 1. Markdown 저장
+    md_path = OUTPUTS_DIR / REPORT_FILENAME
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write(report_md)
+    print(f"\nMarkdown saved : {md_path}")
+
+    pdf_path = OUTPUTS_DIR / REPORT_PDF_FILENAME
+
+    # 2. HTML 생성 (markdown 패키지 필요)
+    try:
+        import markdown  # noqa: F401
+    except ImportError:
+        print("  'markdown' 패키지 미설치 — PDF/HTML 변환 스킵")
+        print("   pip install markdown")
+        return str(md_path), str(pdf_path)
+
+    full_html = _build_report_html(report_md)
+
+    # HTML도 함께 저장 (폴백용)
+    html_path = OUTPUTS_DIR / REPORT_FILENAME.replace(".md", ".html")
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(full_html)
+
+    # 3. PDF 변환 시도 (weasyprint → pdfkit 순)
+    pdf_ok = _save_pdf_weasyprint(full_html, pdf_path)
+
+    if not pdf_ok:
+        print("  weasyprint 미설치 또는 오류 → pdfkit 시도...")
+        pdf_ok = _save_pdf_pdfkit(full_html, pdf_path)
+
+    if pdf_ok:
+        print(f" PDF saved      : {pdf_path}")
+    else:
+        print("\n  PDF 변환 라이브러리가 없습니다.")
+        print("   아래 중 하나를 설치한 후 다시 실행하세요:\n")
+        print("   ① weasyprint (권장)")
+        print("     brew install cairo pango gdk-pixbuf libffi")
+        print("     pip install weasyprint\n")
+        print("   ② pdfkit (대체)")
+        print("     brew install --cask wkhtmltopdf")
+        print("     pip install pdfkit\n")
+        print(f"   ※ HTML 파일은 저장됨: {html_path}")
+        print("     브라우저에서 열어 '파일 → PDF로 인쇄'로 대체 가능")
 
     return str(md_path), str(pdf_path)
 
@@ -346,7 +367,7 @@ def run_pipeline(
     try:
         ingest_all(force_rebuild=force_rebuild)
     except FileNotFoundError as e:
-        print(f"\n❌ PDF 파일을 찾을 수 없습니다:\n  {e}")
+        print(f"\nPDF 파일을 찾을 수 없습니다:\n  {e}")
         print("\n수동으로 PDF 파일을 아래 폴더에 복사해주세요:")
         print(f"  data/lges/   ← LGES PDF")
         print(f"  data/catl/   ← CATL PDF")
@@ -365,7 +386,7 @@ def run_pipeline(
     # 5. 보고서 저장
     report = final_state.get("final_report", "")
     if not report:
-        print("❌ 보고서 생성에 실패했습니다.")
+        print("보고서 생성에 실패했습니다.")
         sys.exit(1)
 
     print("\n[Step 4] Saving report...")
@@ -373,15 +394,15 @@ def run_pipeline(
 
     elapsed = time.time() - start_time
     print("\n" + "=" * 65)
-    print(f"  ✅ Pipeline completed in {elapsed:.1f}s")
-    print(f"  📄 Report (MD):  {md_path}")
-    print(f"  📄 Report (PDF): {pdf_path}")
+    print(f"  Pipeline completed in {elapsed:.1f}s")
+    print(f"  Report (MD):  {md_path}")
+    print(f"  Report (PDF): {pdf_path}")
     print("=" * 65)
 
     return final_state
 
 
-# ─── CLI Entry Point ──────────────────────────────────────────────────────────
+# CLI Entry Point
 
 if __name__ == "__main__":
     import argparse

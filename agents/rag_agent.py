@@ -2,7 +2,7 @@
 agents/rag_agent.py
 RAG Agent A (LGES) / RAG Agent B (CATL) 공통 모듈.
 
-교재 Agentic RAG 워크플로우 구현 (두 다이어그램 통합):
+교재 Agentic RAG 워크플로우 구현 :
   Memory Load → Query Transformation → Retrieve
   → Search Evaluation (Grade Documents)
     → NO: Query Rewrite → Retrieve (max_retry: 5)
@@ -184,7 +184,7 @@ class RAGAgent:
         return "\n\n".join(all_results)
 
 
-# ─── Predefined Topics per Agent ─────────────────────────────────────────────
+# Predefined Topics per Agent
 
 LGES_TOPICS = [
     "포트폴리오 다각화 전략 및 핵심 사업 방향",

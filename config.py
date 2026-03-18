@@ -7,29 +7,29 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ─── Base Paths ───────────────────────────────────────────────────────────────
+# Base Paths
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 OUTPUTS_DIR = BASE_DIR / "outputs"
 FAISS_DIR = BASE_DIR / "faiss_index"
 
-# ─── API Keys ─────────────────────────────────────────────────────────────────
+# API Keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 
-# ─── LLM Settings ─────────────────────────────────────────────────────────────
+# LLM Settings
 LLM_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 LLM_TEMPERATURE = 0.0
 LLM_TEMPERATURE_REPORT = 0.3  # slightly creative for report writing
 
-# ─── Embedding Settings ───────────────────────────────────────────────────────
+# Embedding Settings
 # Open-source multilingual embedding (Korean/English/Chinese support)
 # BAAI/bge-m3: 100+ 언어 지원, 한국어 성능 우수, 무료 오픈소스
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3")
 EMBEDDING_DEVICE = "cpu"           # change to "cuda" if GPU available
 EMBEDDING_BATCH_SIZE = 32
 
-# ─── PDF Page Selection (100-page total limit) ────────────────────────────────
+# PDF Page Selection (100-page total limit)
 # Pages are 0-indexed internally, but 1-indexed in config for readability
 PDF_PAGE_RANGES = {
     "lges": {

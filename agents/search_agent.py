@@ -1,5 +1,4 @@
 """
-agents/search_agent.py
 Web Search Agent — 확증 편향 방지를 위한 긍정/부정 쌍 쿼리 전략.
 
 핵심 설계:

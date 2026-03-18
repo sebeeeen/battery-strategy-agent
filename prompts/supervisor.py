@@ -1,11 +1,4 @@
-"""
-prompts/supervisor.py
-Supervisor Agent 프롬프트 — 전체 조율, 작업 분배, 보고서 생성.
-"""
-
 from langchain_core.prompts import ChatPromptTemplate
-
-# ─── Routing Decision Prompt ──────────────────────────────────────────────────
 
 SUPERVISOR_ROUTING_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
@@ -41,7 +34,7 @@ SUPERVISOR_ROUTING_PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 
-# ─── Report Generation Prompt ─────────────────────────────────────────────────
+# Report Generation Prompt
 
 REPORT_GENERATION_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
@@ -72,9 +65,21 @@ REPORT_GENERATION_PROMPT = ChatPromptTemplate.from_messages([
      "- SWOT must clearly separate internal (S/W) from external (O/T)\n"
      "- SUMMARY must be concise (max 300 words)\n"
      "- Write entirely in Korean (except proper nouns and technical terms)\n"
-     "- REFERENCE format:\n"
-     "  기관 보고서: 발행기관(YYYY). 보고서명. URL\n"
-     "  웹페이지: 기관명(YYYY-MM-DD). 제목. 사이트명, URL"),
+     "- REFERENCE section rules:\n"
+     "  * 보고서 작성에 실제로 활용한 자료 목록만 기재 (미사용 자료 제외)\n"
+     "  * 자료 유형별로 구분하여 작성 (해당 유형이 없으면 해당 소제목 생략)\n"
+     "  * 형식:\n"
+     "    기관 보고서: 발행기관(YYYY). 보고서명. URL\n"
+     "    학술 논문: 저자(YYYY). 논문제목. 학술지명, 권(호), 페이지.\n"
+     "    웹페이지: 기관명 또는 작성자(YYYY-MM-DD). 제목. 사이트명, URL\n"
+     "  * 예시:\n"
+     "    ### 기관 보고서\n"
+     "    - LG에너지솔루션(2024). LG Energy Solution Annual Report 2023. https://...\n"
+     "    - IEA(2024). Global EV Outlook 2024. https://www.iea.org/...\n"
+     "    ### 웹페이지\n"
+     "    - SNE Research(2024-03-15). 글로벌 배터리 시장 점유율 2024. SNE Research, https://...\n"
+     "  * URL이 없는 자료는 URL 항목 생략 가능\n"
+     "  * 검색 결과 source_list에 있는 실제 URL만 사용할 것"),
     ("human",
      "=== LGES Strategy Information ===\n{lges_context}\n\n"
      "=== CATL Strategy Information ===\n{catl_context}\n\n"

@@ -1,5 +1,4 @@
 """
-prompts/rag.py
 RAG Agent A(LGES) / RAG Agent B(CATL) 프롬프트 템플릿.
 
 교재 Self-Reflection 패턴 적용:
@@ -8,7 +7,7 @@ RAG Agent A(LGES) / RAG Agent B(CATL) 프롬프트 템플릿.
 
 from langchain_core.prompts import ChatPromptTemplate
 
-# ─── Context Extraction Prompt ────────────────────────────────────────────────
+# Context Extraction Prompt
 
 RAG_EXTRACTION_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
@@ -27,7 +26,7 @@ RAG_EXTRACTION_PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 
-# ─── Self-Reflection Prompt (교재 다이어그램 1 반영) ─────────────────────────
+# Self-Reflection Prompt
 
 RAG_SELF_REFLECTION_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
@@ -56,7 +55,7 @@ RAG_SELF_REFLECTION_PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 
-# ─── Draft Revision Prompt ────────────────────────────────────────────────────
+# Draft Revision Prompt
 
 RAG_REVISION_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
