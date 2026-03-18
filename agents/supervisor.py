@@ -320,10 +320,19 @@ class SupervisorAgent:
             f"---\n\n"
         )
 
-        # 정보 격차 주석 자동 삽입
+        # 정보 격차 주석 — REFERENCE 섹션 앞에 삽입 (참고문헌이 항상 최하단)
         gap_note = self._build_intelligence_gap_note(contradictions or [])
 
-        return header + report + gap_note
+        import re
+        ref_match = re.search(r'\n#+\s*REFERENCE', report, re.IGNORECASE)
+        if ref_match:
+            # REFERENCE 섹션 직전에 gap_note 삽입
+            insert_pos = ref_match.start()
+            report = report[:insert_pos] + "\n" + gap_note + "\n" + report[insert_pos:]
+            return header + report
+        else:
+            # REFERENCE 섹션이 없으면 gap_note → 보고서 끝에 추가
+            return header + report + gap_note
 
     def _build_intelligence_gap_note(
         self, contradictions: List[Dict]

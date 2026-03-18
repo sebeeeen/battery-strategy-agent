@@ -71,9 +71,38 @@ def supervisor_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
     2. LGES/CATL 양쪽 데이터 확보 후 상충 주장 탐지
     3. 상충 발견 시 팩트체크 우선 라우팅
     4. Critic 피드백 기반 커버리지 갭 보완
+    5. human_review 이후: human_approved=True → generate_report
+                         human_approved=True + requery → search (추가 검색 후 재진행)
     """
     iteration = state.get("iteration", 0)
     max_iter = state.get("max_iterations", 10)
+
+    # HiTL 승인 체크
+    # human_review를 거쳐 사람이 승인한 경우: Supervisor가 최종 라우팅을 결정
+    if state.get("human_approved", False):
+        requery = state.get("requery_instructions", [])
+        if requery:
+            # 추가 검색 지시가 있으면 → search → critic → human_review 순으로 재진행
+            print(
+                f"[Supervisor] human_approved=True + requery_instructions({len(requery)}건) "
+                f"→ search (추가 검색 후 재분석)"
+            )
+            return {
+                **state,
+                "next_action": "search",
+                "iteration": iteration + 1,
+                "human_approved": False,       # 재검색 후 다시 human_review 거치도록 리셋
+                "requery_instructions": requery,
+            }
+        # 추가 지시 없이 승인 → 바로 보고서 생성
+        print(f"[Supervisor] human_approved=True → generate_report")
+        return {
+            **state,
+            "next_action": "generate_report",
+            "iteration": iteration + 1,
+            "coverage_matrix": state.get("coverage_matrix", {}),
+        }
+
     agent = SupervisorAgent()
 
     # 커버리지 매트릭스 업데이트 (데이터가 있을 경우)
@@ -300,20 +329,27 @@ def human_review_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
 
     LangGraph interrupt 메커니즘:
       compile(interrupt_before=["generate_report"])와 함께 사용 시
-      이 노드에서 app.stream()이 일시정지됨.
+      supervisor가 generate_report로 라우팅하기 직전 중단됨.
       app.update_state(config, {...})로 상태 수정 후
       app.stream(None, config)로 재개.
 
+    HiTL 실행 흐름 (v2 — supervisor 경유):
+      critic → human_review → supervisor → [interrupt] → generate_report
+
     사용 예시 (app.py):
         config = {"configurable": {"thread_id": "run-001"}}
-        # 스트리밍 실행 (human_review 직전에 중단)
+        # 스트리밍 실행 (generate_report 직전에 중단)
         for event in app.stream(initial_state, config):
             if "__interrupt__" in str(event):
                 print("[HUMAN REVIEW REQUIRED]")
                 print(f"Critic: {app.get_state(config).values['critic_feedback']}")
                 break
-        # 승인 후 재개
-        app.update_state(config, {"human_approved": True, "human_notes": "approved"})
+        # 승인 후 재개 (requery_instructions 전달 시 supervisor가 search로 재라우팅)
+        app.update_state(config, {
+            "human_approved": True,
+            "human_notes": "ESS 데이터 보강",
+            "requery_instructions": [{"topic": "ESS market share 2025"}],  # 선택적
+        })
         for event in app.stream(None, config):
             ...
     """
@@ -327,7 +363,7 @@ def human_review_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
     print("=" * 60)
     print("HUMAN REVIEW CHECKPOINT")
     print("=" * 60)
-    print(f"\n🔍 Critic 평가:\n{critic_feedback}")
+    print(f"\n Critic 평가:\n{critic_feedback}")
 
     if coverage:
         print(f"\n커버리지 요약 (상위 3개 차원):")
@@ -456,8 +492,8 @@ def build_workflow() -> StateGraph:
         {"supervisor": "supervisor", "human_review": "human_review"},
     )
 
-    # human_review → generate_report
-    workflow.add_edge("human_review", "generate_report")
+    # human_review → supervisor (사람의 승인/추가지시를 Supervisor가 최종 라우팅 결정)
+    workflow.add_edge("human_review", "supervisor")
 
     # generate_report → END
     workflow.add_edge("generate_report", END)
@@ -499,6 +535,7 @@ def create_app(enable_hitl: bool = False):
             checkpointer = MemorySaver()
             print("[Workflow] Human-in-the-Loop mode enabled.")
             print("  → interrupt_before=['generate_report']")
+            print("  → 실행 흐름: critic → human_review → supervisor → [중단] → generate_report")
             print("  → MemorySaver checkpointer active")
             return workflow.compile(
                 checkpointer=checkpointer,

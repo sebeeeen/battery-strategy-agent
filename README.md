@@ -145,7 +145,7 @@ except RuntimeError:
 
 ### Human-in-the-Loop (HiTL) 실행 흐름
 
-보고서 생성 직전 `interrupt_before=["generate_report"]`로 자동 중단하여 전문가 검토 후 재개한다.
+`critic → human_review → supervisor → [interrupt] → generate_report` 흐름으로, Supervisor가 human_review 이후의 최종 라우팅을 결정한다.
 
 ```python
 # graph/workflow.py
@@ -154,7 +154,7 @@ app = create_app(enable_hitl=True)
 
 config = {"configurable": {"thread_id": "analysis-001"}}
 
-# 1단계: 분석 실행 (generate_report 직전 자동 중단)
+# 1단계: 분석 실행 (supervisor → generate_report 직전 자동 중단)
 for event in app.stream(initial_state, config):
     if "__interrupt__" in str(event):
         break
@@ -164,14 +164,18 @@ state = app.get_state(config).values
 print(state["critic_feedback"])
 print(state["coverage_matrix"])
 
-# 3단계: 승인 또는 추가 지시
+# 3단계: 승인 또는 추가 검색 지시
+# ① 단순 승인
+app.update_state(config, {"human_approved": True})
+
+# ② 추가 검색 지시 (requery_instructions 전달 시 Supervisor가 search로 재라우팅)
 app.update_state(config, {
     "human_approved": True,
     "human_notes": "ESS 시장 점유율 데이터 보강 필요",
     "requery_instructions": [{"topic": "ESS market share 2025", "focus": "LGES vs CATL"}]
 })
 
-# 4단계: 재개
+# 4단계: 재개 (Supervisor가 requery 여부에 따라 search 또는 generate_report로 라우팅)
 for event in app.stream(None, config):
     pass  # 최종 보고서 생성 완료
 ```
@@ -182,19 +186,23 @@ for event in app.stream(None, config):
 # 1. 의존성 설치
 pip install -r requirements.txt
 
-# 2. 환경 변수 설정
+# 2. PDF 변환 시스템 의존성 설치 (weasyprint 권장 — macOS 기준)
+brew install cairo pango gdk-pixbuf libffi
+pip install weasyprint
+
+# 3. 환경 변수 설정
 cp .env.example .env
 # .env 파일에 OPENAI_API_KEY 입력
 
-# 3. PDF 파일 배치
+# 4. PDF 파일 배치
 cp path/to/lges.pdf   data/lges/
 cp path/to/catl.pdf   data/catl/
 cp path/to/iea.pdf    data/market/
 
-# 4. 문서 인덱싱 (최초 1회)
+# 5. 문서 인덱싱 (최초 1회)
 python retrieval/ingest.py
 
-# 5. 보고서 생성
+# 6. 보고서 생성
 python app.py
 ```
 

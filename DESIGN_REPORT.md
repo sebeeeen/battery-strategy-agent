@@ -219,9 +219,20 @@ coverage_matrix = {
 
 ## 6-2. HiTL 실행 흐름
 
-1. `interrupt_before=["generate_report"]`로 보고서 생성 직전 자동 중단 
-2. 사람이 `critic_feedback`과 `coverage_matrix`를 확인 후 승인 또는 추가 지시 
-3. `app.stream(None, config)`으로 재개
+```
+critic → human_review → supervisor → [interrupt] → generate_report
+```
+
+1. Critic Agent가 `APPROVED` 판정 → `human_review` 노드가 `critic_feedback`·`coverage_matrix`·탐지된 상충 주장을 출력하며 자동 승인 (`human_approved=True`) 처리
+2. `interrupt_before=["generate_report"]`로 Supervisor가 `generate_report`로 라우팅하기 직전 자동 중단
+3. 사람이 상태(`critic_feedback`, `coverage_matrix`)를 확인 후 승인 또는 추가 지시 입력
+4. `app.update_state()`로 `human_notes` / `requery_instructions` 전달
+5. `app.stream(None, config)`으로 재개
+
+**Supervisor 경유의 의의:**
+- `requery_instructions`가 있을 경우 Supervisor가 `search`로 재라우팅 → 실제 추가 검색 실행
+- `requery_instructions`가 없을 경우 Supervisor가 즉시 `generate_report`로 라우팅
+- 이전 설계(`human_review → generate_report` 직접 엣지)에서는 추가 검색 지시가 실제로 반영되지 않았으나, Supervisor 경유로 지시가 실제 워크플로우에 적용됨
 
 ---
 
