@@ -206,6 +206,63 @@ python retrieval/ingest.py
 python app.py
 ```
 
+## 설계 대비 변경사항
+
+설계 문서(`DESIGN_REPORT.md`) 기준으로 실제 구현 과정에서 변경된 내용을 아래에 정리합니다.
+
+### 1. 파라미터 조정 (성능 최적화)
+
+| 파라미터 | 설계값 | 구현값 | 변경 이유 |
+|---------|--------|--------|----------|
+| `RETRIEVAL_K` | 6 | 4 | LLM 호출 비용·시간 절감 |
+| `MAX_RETRIEVAL_RETRY` | 5 | 1 | 재검색 루프로 인한 지연 방지 |
+| `MAX_REVISION` | 3 | 1 | Self-Reflection 반복 시간 단축 |
+| Search query pairs | 5쌍 | 3쌍 | 중복 주제 통합 (ESS·기술 차별화 등) |
+
+파라미터 축소는 기능 제거가 아니라 **실행 가능한 시간 범위 내 동작** 보장을 위한 조정입니다. 설계에 명시된 CRAG 루프, Self-Reflection, Grade Documents 등 핵심 워크플로우는 모두 유지됩니다.
+
+### 2. 배치 Grading 도입 (`retrieval/retriever.py`)
+
+설계에서는 문서 k개를 개별 LLM 호출로 각각 평가(`grade_document()`)했으나, 실제 구현에서는 k개 문서를 **단일 LLM 호출로 일괄 평가**하는 `batch_grade_documents()`로 교체했습니다.
+
+- 변경 전: k회 LLM 호출 (k=4일 때 4회)
+- 변경 후: 1회 LLM 호출로 전체 문서 평가 → **약 75% 호출 감소**
+
+### 3. 에이전트 내부 토픽 병렬 처리 추가
+
+설계 문서에는 에이전트 간 병렬 처리(`asyncio.gather()`)만 명시되어 있었으나, 실제 구현에서는 각 RAG 에이전트 내부에서도 **토픽별 `ThreadPoolExecutor` 병렬 처리**를 추가했습니다.
+
+- `LGESRagAgent.run()`, `CATLRagAgent.run()`, `RAGAgent.run()` 모두 적용
+- 토픽 수가 3개일 때 기존 순차 처리 대비 약 3배 속도 향상
+
+### 4. ProgressTracker 신규 도입 (`graph/progress.py`)
+
+설계 문서에 없던 컴포넌트입니다. 전체 6단계 워크플로우의 진행 상황을 아래 형식으로 출력합니다.
+
+```
+[Step N/6] 단계명  |  세부 내용  |  진행률 Z%  (경과시간s 경과)
+```
+
+실행 중 사용자가 현재 어느 단계인지 파악할 수 있도록 가시성을 높이기 위해 추가했습니다.
+
+### 5. 무한루프 차단 로직 추가 (`graph/workflow.py`)
+
+Critic Agent가 `NEEDS_MORE_SEARCH` 판정을 반복 반환할 경우, `supervisor_node → search → critic → human_review → supervisor_node` 루프가 무한 반복되는 문제가 실행 중 발견되었습니다.
+
+설계에는 `max_iterations` 초과 시 동작이 명확히 정의되지 않았으나, 다음 두 가지 안전장치를 추가했습니다.
+
+1. **`supervisor_node`**: `human_approved=True + requery` 분기에 `iteration < max_iter` 조건 추가 → 초과 시 `generate_report`로 강제 라우팅
+2. **`human_review_node`**: `iteration >= max_iter` 시 `requery_instructions = []` 강제 초기화 (이중 방어)
+
+### 6. RAG Agent 클래스 분리 (교수님 피드백 반영)
+
+초기에는 `RAGAgent(doc_type="lges")`와 `RAGAgent(doc_type="catl")`처럼 파라미터만 다른 동일 클래스를 사용했으나, 교수님 피드백("데이터 혼합 위험")에 따라 `LGESRagAgent`와 `CATLRagAgent`를 **완전히 독립된 클래스**로 분리했습니다.
+
+- 각 클래스가 고유의 `DOC_TYPE`, `COMPANY_NAME`, `INDEX_NAME`을 클래스 변수로 보유
+- 전용 `@tool` 바인딩(`retrieve_lges_documents` / `retrieve_catl_documents`)으로 FAISS 인덱스 접근을 물리적으로 분리
+
+---
+
 ## Contributors
 
 - 권세빈: Agentic RAG 설계, RAG Agent 개발, 확증 편향 방지 전략 구현, Critic Agent 개발, LangGraph StateGraph 구성
