@@ -23,6 +23,7 @@ from agents.rag_agent import RAGAgent, MARKET_TOPICS
 from agents.search_agent import SearchAgent
 from agents.critic_agent import CriticAgent
 from agents.supervisor import SupervisorAgent
+from graph.progress import tracker
 
 
 # State Definition
@@ -82,20 +83,15 @@ def supervisor_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
     if state.get("human_approved", False):
         requery = state.get("requery_instructions", [])
         if requery:
-            # 추가 검색 지시가 있으면 → search → critic → human_review 순으로 재진행
-            print(
-                f"[Supervisor] human_approved=True + requery_instructions({len(requery)}건) "
-                f"→ search (추가 검색 후 재분석)"
-            )
+            tracker.update("supervisor", f"재검색 지시 {len(requery)}건 → search")
             return {
                 **state,
                 "next_action": "search",
                 "iteration": iteration + 1,
-                "human_approved": False,       # 재검색 후 다시 human_review 거치도록 리셋
+                "human_approved": False,
                 "requery_instructions": requery,
             }
-        # 추가 지시 없이 승인 → 바로 보고서 생성
-        print(f"[Supervisor] human_approved=True → generate_report")
+        tracker.update("supervisor", "승인 완료 → generate_report")
         return {
             **state,
             "next_action": "generate_report",
@@ -121,12 +117,8 @@ def supervisor_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
     if not lges and not catl and not market:
         next_action = "parallel_rag"
         requery = None
-        print(
-            f"[Supervisor] Iteration {iteration+1}/{max_iter}: "
-            f"next_action = parallel_rag  ← asyncio.gather() 병렬 실행"
-        )
+        tracker.update("supervisor", f"반복 {iteration+1}/{max_iter} → parallel_rag")
     else:
-        # 다음 액션 결정 (Competitive Intelligence 로직)
         next_action, requery = agent.decide_next_action(
             lges_context=lges,
             catl_context=catl,
@@ -136,7 +128,7 @@ def supervisor_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
             iteration=iteration,
             max_iterations=max_iter,
         )
-        print(f"[Supervisor] Iteration {iteration+1}/{max_iter}: next_action = {next_action}")
+        tracker.update("supervisor", f"반복 {iteration+1}/{max_iter} → {next_action}")
 
     update = {
         **state,
@@ -171,31 +163,17 @@ def parallel_rag_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
       - 일반 실행(asyncio.run): 새 이벤트 루프 생성
       - Jupyter / LangGraph 내부 루프 감지 시: 별도 스레드에서 새 루프 실행
     """
-    print(
-        "\n[Parallel RAG Node] asyncio.gather()로 3개 RAG 에이전트 동시 실행 시작..."
-        "\n  ├── LGESRagAgent  (faiss_lges)"
-        "\n  ├── CATLRagAgent  (faiss_catl)"
-        "\n  └── RAGAgent(market) (faiss_market)"
-    )
+    tracker.update("parallel_rag")
 
     # 동기 함수 정의 (ThreadPoolExecutor에서 실행)
     def run_lges() -> str:
-        print("  [⚡ LGES RAG]  시작")
-        result = LGESRagAgent().run()
-        print("  [✓ LGES RAG]  완료")
-        return result
+        return LGESRagAgent().run()
 
     def run_catl() -> str:
-        print("  [⚡ CATL RAG]  시작")
-        result = CATLRagAgent().run()
-        print("  [✓ CATL RAG]  완료")
-        return result
+        return CATLRagAgent().run()
 
     def run_market() -> str:
-        print("  [⚡ Market RAG] 시작")
-        result = RAGAgent(doc_type="market").run(topics=MARKET_TOPICS)
-        print("  [✓ Market RAG] 완료")
-        return result
+        return RAGAgent(doc_type="market").run(topics=MARKET_TOPICS)
 
     # asyncio.gather() 코루틴 정의
     async def gather_rag() -> tuple:
@@ -230,7 +208,6 @@ def parallel_rag_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
         results = asyncio.run(gather_rag())
 
     lges_result, catl_result, market_result = results
-    print("[Parallel RAG Node] ✓ 3개 RAG 에이전트 병렬 실행 완료")
 
     return {
         **state,
@@ -243,27 +220,18 @@ def parallel_rag_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
 # 개별 RAG 노드 (fallback / 개별 재실행용)
 
 def rag_lges_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
-    """LGESRagAgent — LGES 전용 독립 클래스, faiss_lges 인덱스만 사용. (개별 재실행)"""
-    print("\n[RAG-LGES Node] Starting LGES analysis (Independent Agent)...")
-    agent = LGESRagAgent()
-    result = agent.run()
-    return {**state, "lges_context": result}
+    """LGESRagAgent — fallback 개별 재실행."""
+    return {**state, "lges_context": LGESRagAgent().run()}
 
 
 def rag_catl_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
-    """CATLRagAgent — CATL 전용 독립 클래스, faiss_catl 인덱스만 사용. (개별 재실행)"""
-    print("\n[RAG-CATL Node] Starting CATL analysis (Independent Agent)...")
-    agent = CATLRagAgent()
-    result = agent.run()
-    return {**state, "catl_context": result}
+    """CATLRagAgent — fallback 개별 재실행."""
+    return {**state, "catl_context": CATLRagAgent().run()}
 
 
 def rag_market_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
-    """Market RAGAgent — IEA 보고서 기반 시장 배경 분석. (개별 재실행)"""
-    print("\n[RAG-Market Node] Starting market analysis...")
-    agent = RAGAgent(doc_type="market")
-    result = agent.run(topics=MARKET_TOPICS)
-    return {**state, "market_context": result}
+    """Market RAGAgent — fallback 개별 재실행."""
+    return {**state, "market_context": RAGAgent(doc_type="market").run(topics=MARKET_TOPICS)}
 
 
 def search_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
@@ -271,7 +239,7 @@ def search_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
     Search Agent — 긍정/부정 쌍 쿼리 + 상충 주장 팩트체크.
     Supervisor가 생성한 팩트체크 쿼리도 함께 처리.
     """
-    print("\n[Search Node] Running balanced web search (with contradiction fact-check)...")
+    tracker.update("search")
     agent = SearchAgent()
     requery = state.get("requery_instructions", [])
     result = agent.run_balanced_search(
@@ -291,7 +259,7 @@ def search_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
 
 def critic_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
     """Critic Agent — 수집 정보 균형성 + 상충 주장 해소 여부 검토."""
-    print("\n[Critic Node] Evaluating information balance...")
+    tracker.update("critic")
     agent = CriticAgent()
     evaluation = agent.evaluate(
         lges_context=state.get("lges_context", ""),
@@ -310,7 +278,6 @@ def critic_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
         f"Issues: {'; '.join(issues) if issues else 'None'}\n"
         f"Missing: {'; '.join(missing) if missing else 'None'}"
     )
-    print(f"[Critic] {critic_feedback.splitlines()[0]}")
 
     return {
         **state,
@@ -353,34 +320,17 @@ def human_review_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
         for event in app.stream(None, config):
             ...
     """
-    print("\n[Human Review Node] Preparing review summary...")
+    tracker.update("human_review")
 
-    # 사람에게 보여줄 요약 정보 출력
     critic_feedback = state.get("critic_feedback", "평가 없음")
-    coverage = state.get("coverage_matrix", {})
-    contradictions = state.get("contradictions", [])
 
-    print("=" * 60)
-    print("HUMAN REVIEW CHECKPOINT")
-    print("=" * 60)
-    print(f"\n Critic 평가:\n{critic_feedback}")
-
-    if coverage:
-        print(f"\n커버리지 요약 (상위 3개 차원):")
-        for dim, scores in list(coverage.items())[:3]:
-            avg = sum(scores.values()) / len(scores)
-            print(f"  {dim}: {avg:.2f}")
-
-    if contradictions:
-        print(f"\n탐지된 상충 주장 ({len(contradictions)}건):")
-        for c in contradictions:
-            print(f"  - {c.get('topic', '')}")
-    print("=" * 60)
+    # 사람에게 보여줄 핵심 정보만 출력
+    verdict_line = critic_feedback.splitlines()[0] if critic_feedback else "N/A"
+    print(f"  Critic: {verdict_line}")
 
     # HiTL 비활성화 모드: 자동 승인
     human_approved = state.get("human_approved", False)
     if not human_approved:
-        # 기본값: 자동 승인 (HiTL 모드에서는 interrupt가 여기 전에 발생)
         human_approved = True
 
     return {**state, "human_approved": human_approved}
@@ -388,11 +338,9 @@ def human_review_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
 
 def generate_report_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
     """Report Generation Node — Competitive Intelligence 보고서 작성."""
-    print("\n[Generate Report Node] Creating Competitive Intelligence Report...")
+    tracker.update("generate_report")
 
-    # 사람이 거부한 경우 스킵 (HiTL에서 human_approved=False로 설정 시)
     if not state.get("human_approved", True):
-        print("[Generate Report] Human review not approved. Skipping.")
         return state
 
     agent = SupervisorAgent()
@@ -412,6 +360,7 @@ def generate_report_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
         sources=state.get("search_sources", []),
         contradictions=state.get("contradictions", []),
     )
+    tracker.done()
     return {**state, "final_report": report}
 
 
@@ -551,7 +500,8 @@ def create_app(enable_hitl: bool = False):
 # ─── Initial State Factory ────────────────────────────────────────────────────
 
 def create_initial_state(max_iterations: int = 8) -> BatteryAnalysisState:
-    """초기 상태 생성 (v2: contradictions, coverage_matrix, HiTL 필드 추가)."""
+    """초기 상태 생성 + ProgressTracker 타이머 시작."""
+    tracker.start()
     return BatteryAnalysisState(
         lges_context="",
         catl_context="",

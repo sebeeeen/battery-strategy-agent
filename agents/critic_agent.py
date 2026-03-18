@@ -65,7 +65,7 @@ class CriticAgent:
                 "verdict": "APPROVED" | "NEEDS_MORE_SEARCH"
             }
         """
-        print("\n[Critic Agent] Evaluating information balance...")
+        # (진행 로그는 workflow의 ProgressTracker에서 출력)
 
         chain = CRITIC_BALANCE_PROMPT | self.llm
         result = chain.invoke({
@@ -95,14 +95,6 @@ class CriticAgent:
                 "requery_instructions": [],
                 "verdict": "APPROVED",
             }
-
-        verdict = evaluation.get("verdict", "APPROVED")
-        score = evaluation.get("balance_score", 0.0)
-        issues = evaluation.get("issues", [])
-
-        print(f"  Verdict: {verdict} (score: {score:.2f})")
-        if issues:
-            print(f"  Issues: {'; '.join(issues[:3])}")
 
         return evaluation
 

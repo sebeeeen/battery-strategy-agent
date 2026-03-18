@@ -8,6 +8,7 @@ FAISS 벡터스토어 기반 문서 검색 모듈.
   → (YES) context 반환
 """
 
+import json
 from typing import List, Optional, Dict
 from pathlib import Path
 
@@ -77,26 +78,43 @@ def get_grader_llm() -> ChatOpenAI:
     return _grader_llm
 
 
-GRADE_PROMPT = ChatPromptTemplate.from_messages([
+BATCH_GRADE_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
      "You are a document relevance grader. "
-     "Given a retrieved document and a user question, "
-     "assess whether the document contains information relevant to answering the question.\n"
-     "Respond with ONLY 'YES' or 'NO'."),
+     "Given a question and a numbered list of documents, "
+     "return a JSON array of YES/NO verdicts — one per document — indicating relevance. "
+     "Return ONLY the JSON array, nothing else. Example: [\"YES\", \"NO\", \"YES\"]"),
     ("human",
      "Question: {question}\n\n"
-     "Document:\n{document}\n\n"
-     "Is this document relevant? (YES/NO)"),
+     "Documents:\n{documents}\n\n"
+     "Return JSON array of YES/NO (one per document):"),
 ])
 
-def grade_document(question: str, doc: Document) -> bool:
-    """LLM을 이용해 문서 관련성 판단 (Grade Documents 단계)."""
-    chain = GRADE_PROMPT | get_grader_llm()
-    result = chain.invoke({
-        "question": question,
-        "document": doc.page_content[:600],
-    })
-    return result.content.strip().upper().startswith("YES")
+
+def batch_grade_documents(question: str, docs: List[Document]) -> List[Document]:
+    """
+    k개 문서를 LLM 1회 호출로 일괄 관련성 평가 (성능 최적화).
+
+    기존 grade_document() 대비 k배 빠름:
+      k=4 문서 → LLM 4회 호출 → LLM 1회 호출
+    """
+    if not docs:
+        return []
+    doc_texts = "\n\n".join(
+        [f"[{i+1}] {doc.page_content[:400]}" for i, doc in enumerate(docs)]
+    )
+    chain = BATCH_GRADE_PROMPT | get_grader_llm()
+    result = chain.invoke({"question": question, "documents": doc_texts})
+    try:
+        text = result.content.strip()
+        if "```" in text:
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        verdicts = json.loads(text)
+        return [doc for doc, v in zip(docs, verdicts) if str(v).upper().startswith("YES")]
+    except (json.JSONDecodeError, TypeError, IndexError):
+        return docs  # fallback: 모든 문서 반환
 
 
 # ─── Query Rewriter ───────────────────────────────────────────────────────────
@@ -160,8 +178,8 @@ def retrieve_with_grading(
         if not candidates:
             candidates = [doc for doc, _ in results_with_scores]  # fallback
 
-        # 2. Grade Documents
-        relevant_docs = [doc for doc in candidates if grade_document(current_query, doc)]
+        # 2. Grade Documents (배치 처리 — k회 → 1회 LLM 호출)
+        relevant_docs = batch_grade_documents(current_query, candidates)
 
         if relevant_docs:
             # YES: 관련 문서 반환
@@ -169,11 +187,9 @@ def retrieve_with_grading(
 
         if attempt < max_retry:
             # NO: Query Rewrite → 재검색
-            print(f"  [Retriever] Attempt {attempt+1}/{max_retry}: No relevant docs, rewriting query...")
             current_query = rewrite_query(current_query)
 
     # max_retry 소진 → 가장 높은 유사도 문서 반환 (fallback)
-    print(f"  [Retriever] Max retries reached, returning top-{k} as fallback.")
     return [doc for doc, _ in results_with_scores[:k]]
 
 

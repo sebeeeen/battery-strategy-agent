@@ -44,9 +44,7 @@ from agents.tools import retrieve_catl_documents
 CATL_TOPICS = [
     "포트폴리오 다각화 전략 및 핵심 사업 방향",
     "ESS(에너지저장장치) 사업 전략",
-    "나트륨이온 배터리 및 신기술 전략",
-    "글로벌 시장 확장 전략",
-    "주요 경쟁력 및 LFP 배터리 강점",
+    "주요 경쟁력 및 LFP · 나트륨이온 기술 강점",
 ]
 
 
@@ -172,19 +170,15 @@ class CATLRagAgent:
             CATL 전략 분석 결과 (한국어 Markdown 형식)
         """
         topics = topics or CATL_TOPICS
-        self._log(f"Starting CATL analysis | {len(topics)} topics")
         all_results = []
 
         for topic in topics:
-            self._log(f"Topic: {topic}")
-
             # Step 1: Query Transformation
             query = self._transform_query(topic)
 
             # Step 2: Retrieve + Grade Documents (CRAG 루프)
             context = self._retrieve(query, max_retry=max_retry)
             if not context.strip():
-                self._log(f"  Warning: No context for '{topic}'")
                 continue
 
             # Step 3: Draft Generation
@@ -196,16 +190,12 @@ class CATLRagAgent:
                 reflection = self._self_reflect(topic, draft, context)
                 verdict = reflection.get("verdict", "APPROVED")
 
-                self._log(f"  Self-Reflection [{revision_count+1}/{max_revision}]: {verdict}")
-
                 if verdict == "APPROVED":
                     break
-
                 elif verdict == "REVISE":
                     guidance = reflection.get("revision_guidance", "Improve data specificity")
                     draft = self._revise_draft(topic, draft, guidance, context)
                     revision_count += 1
-
                 elif verdict == "RETRIEVE":
                     missing = reflection.get("missing_info", "")
                     new_query = f"{self.COMPANY_NAME} {topic} {missing}"
@@ -214,12 +204,10 @@ class CATLRagAgent:
                         context = context + "\n\n---\n\n" + extra
                     draft = self._extract_draft(topic, context)
                     revision_count += 1
-
                 else:
                     break
 
             all_results.append(f"## {topic}\n\n{draft}")
 
         # Step 5: Memory Update (상태로 반환)
-        self._log("Analysis complete.")
         return "\n\n".join(all_results)

@@ -128,12 +128,9 @@ class RAGAgent:
         Returns:
             통합된 분석 결과 문자열 (한국어)
         """
-        print(f"\n[RAG Agent: {self.doc_type.upper()}] Starting analysis...")
         all_results = []
 
         for topic in topics:
-            print(f"  Topic: {topic}")
-
             # Step 1: Query Transformation (쿼리 변환 — 회사명 + 주제 결합)
             query = f"{self.company} {topic}"
 
@@ -141,30 +138,24 @@ class RAGAgent:
             context = retrieve_context(query, self.doc_type, max_retry=max_retry)
 
             if not context.strip():
-                print(f"  Warning: No context retrieved for topic '{topic}'")
                 continue
 
             # Step 3: Draft Generation
             draft = self._extract_draft(topic, context)
             revision_count = 0
 
-            # Step 4: Self-Reflection Loop (max_revision: 3)
+            # Step 4: Self-Reflection Loop
             while revision_count < max_revision:
                 reflection = self._self_reflect(topic, draft, context)
                 verdict = reflection.get("verdict", "APPROVED")
 
-                print(f"  Self-Reflection [{revision_count+1}/{max_revision}]: {verdict}")
-
                 if verdict == "APPROVED":
                     break
-
                 elif verdict == "REVISE":
                     guidance = reflection.get("revision_guidance", "Improve specificity and data")
                     draft = self._revise_draft(topic, draft, guidance, context)
                     revision_count += 1
-
                 elif verdict == "RETRIEVE":
-                    # 추가 정보 검색 필요 — 다른 쿼리로 재검색
                     missing = reflection.get("missing_info", "")
                     new_query = f"{self.company} {topic} {missing}"
                     additional_context = retrieve_context(
@@ -174,7 +165,6 @@ class RAGAgent:
                         context = context + "\n\n---\n\n" + additional_context
                     draft = self._extract_draft(topic, context)
                     revision_count += 1
-
                 else:
                     break
 
@@ -203,8 +193,7 @@ CATL_TOPICS = [
 ]
 
 MARKET_TOPICS = [
-    "글로벌 전기차 시장 현황 및 성장 추세",
-    "배터리 시장 환경 변화 및 캐즘(Chasm) 현상",
+    "글로벌 전기차 및 배터리 시장 현황과 캐즘(Chasm) 현상",
     "ESS 시장 성장 전망",
     "주요 지역별 EV 시장 동향",
 ]
