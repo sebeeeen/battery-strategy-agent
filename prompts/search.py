@@ -31,35 +31,23 @@ SEARCH_QUERY_GEN_PROMPT = ChatPromptTemplate.from_messages([
 # 확증 편향 방지를 위한 사전 정의 긍정/부정 쌍 쿼리
 
 BALANCED_QUERY_PAIRS = [
-    # LGES ESS Strategy
+    # LGES vs CATL ESS + 포트폴리오 (통합)
     {
-        "topic": "LGES ESS strategy",
-        "positive": "LG Energy Solution ESS energy storage system business growth 2024 strategy success",
-        "negative": "LG Energy Solution ESS energy storage challenges competition losses difficulties 2024",
+        "topic": "LGES CATL ESS strategy comparison",
+        "positive": "LG Energy Solution CATL ESS energy storage strategy growth 2024 2025 comparison",
+        "negative": "LG Energy Solution CATL ESS challenges overcapacity financial pressure 2024",
     },
-    # LGES Portfolio Diversification
+    # 기술 차별화 (LFP, 나트륨이온, 포트폴리오 다각화)
     {
-        "topic": "LGES portfolio diversification",
-        "positive": "LG Energy Solution portfolio diversification new business expansion opportunities EV battery",
-        "negative": "LG Energy Solution EV battery market downturn factory utilization problems financial pressure 2024",
+        "topic": "LGES CATL technology differentiation",
+        "positive": "CATL sodium LFP LG Energy Solution new cathode technology competitive advantage 2024 2025",
+        "negative": "CATL LG battery technology risks commercialization challenges geopolitical EV slowdown 2024",
     },
-    # CATL ESS Strategy
-    {
-        "topic": "CATL ESS strategy",
-        "positive": "CATL ESS energy storage business revenue growth global expansion Africa 2024",
-        "negative": "CATL ESS competition challenges market risks overcapacity price war 2024",
-    },
-    # CATL Portfolio Diversification
-    {
-        "topic": "CATL portfolio diversification",
-        "positive": "CATL sodium ion battery LFP new technology innovation competitive advantage 2024 2025",
-        "negative": "CATL technology risks sodium battery commercialization challenges geopolitical risk market concerns",
-    },
-    # Battery Market Background
+    # 배터리 시장 배경
     {
         "topic": "battery market background",
-        "positive": "global battery market EV growth opportunity 2024 2025 clean energy transition",
-        "negative": "EV chasim slowdown battery market overcapacity price decline demand uncertainty 2024",
+        "positive": "global battery ESS EV market growth opportunity 2024 2025 clean energy transition",
+        "negative": "EV chasm slowdown battery overcapacity price war demand uncertainty 2024",
     },
 ]
 

@@ -14,6 +14,7 @@ RAG Agent A (LGES) / RAG Agent B (CATL) 공통 모듈.
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Optional
 
@@ -128,23 +129,16 @@ class RAGAgent:
         Returns:
             통합된 분석 결과 문자열 (한국어)
         """
-        all_results = []
-
-        for topic in topics:
-            # Step 1: Query Transformation (쿼리 변환 — 회사명 + 주제 결합)
+        def _run_topic(topic: str) -> str:
+            """단일 토픽 RAG 파이프라인 실행 (병렬 처리 단위)."""
             query = f"{self.company} {topic}"
-
-            # Step 2: Retrieve + Grade Documents (max_retry 포함, retriever.py에서 처리)
             context = retrieve_context(query, self.doc_type, max_retry=max_retry)
-
             if not context.strip():
-                continue
+                return ""
 
-            # Step 3: Draft Generation
             draft = self._extract_draft(topic, context)
             revision_count = 0
 
-            # Step 4: Self-Reflection Loop
             while revision_count < max_revision:
                 reflection = self._self_reflect(topic, draft, context)
                 verdict = reflection.get("verdict", "APPROVED")
@@ -168,10 +162,19 @@ class RAGAgent:
                 else:
                     break
 
-            all_results.append(f"## {topic}\n\n{draft}")
+            return f"## {topic}\n\n{draft}"
 
-        # Step 5: Memory Update (결과 통합 반환)
-        return "\n\n".join(all_results)
+        results_map = {}
+        with ThreadPoolExecutor(max_workers=len(topics)) as executor:
+            futures = {executor.submit(_run_topic, t): t for t in topics}
+            for future in as_completed(futures):
+                topic = futures[future]
+                result = future.result()
+                if result:
+                    results_map[topic] = result
+
+        # Step 5: Memory Update — 원래 토픽 순서 유지
+        return "\n\n".join(results_map[t] for t in topics if t in results_map)
 
 
 # Predefined Topics per Agent

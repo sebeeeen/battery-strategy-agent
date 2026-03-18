@@ -19,6 +19,7 @@ CATL(Contemporary Amperex Technology Co., Limited) 전용 RAG Agent
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Optional
 
@@ -152,6 +153,39 @@ class CATLRagAgent:
 
     # 공개 메서드
 
+    def _run_single_topic(self, topic: str, max_retry: int, max_revision: int) -> str:
+        """단일 토픽 RAG 파이프라인 실행 (병렬 처리 단위)."""
+        query = self._transform_query(topic)
+        context = self._retrieve(query, max_retry=max_retry)
+        if not context.strip():
+            return ""
+
+        draft = self._extract_draft(topic, context)
+        revision_count = 0
+
+        while revision_count < max_revision:
+            reflection = self._self_reflect(topic, draft, context)
+            verdict = reflection.get("verdict", "APPROVED")
+
+            if verdict == "APPROVED":
+                break
+            elif verdict == "REVISE":
+                guidance = reflection.get("revision_guidance", "Improve data specificity")
+                draft = self._revise_draft(topic, draft, guidance, context)
+                revision_count += 1
+            elif verdict == "RETRIEVE":
+                missing = reflection.get("missing_info", "")
+                new_query = f"{self.COMPANY_NAME} {topic} {missing}"
+                extra = self._retrieve(new_query, max_retry=max_retry)
+                if extra:
+                    context = context + "\n\n---\n\n" + extra
+                draft = self._extract_draft(topic, context)
+                revision_count += 1
+            else:
+                break
+
+        return f"## {topic}\n\n{draft}"
+
     def run(
         self,
         topics: Optional[List[str]] = None,
@@ -161,53 +195,23 @@ class CATLRagAgent:
         """
         CATL 전용 Agentic RAG 파이프라인 실행.
 
-        Args:
-            topics: 분석 토픽 목록 (None이면 CATL_TOPICS 기본값 사용)
-            max_retry: 최대 쿼리 재작성 횟수 (교재 기준: 5)
-            max_revision: 최대 드래프트 수정 횟수 (교재 기준: 3)
-
-        Returns:
-            CATL 전략 분석 결과 (한국어 Markdown 형식)
+        토픽별 병렬 처리 (ThreadPoolExecutor):
+          topic-1 ┐
+          topic-2 ├── 동시 실행 → 합산
+          topic-3 ┘
         """
         topics = topics or CATL_TOPICS
-        all_results = []
+        results_map = {}
 
-        for topic in topics:
-            # Step 1: Query Transformation
-            query = self._transform_query(topic)
+        with ThreadPoolExecutor(max_workers=len(topics)) as executor:
+            futures = {
+                executor.submit(self._run_single_topic, t, max_retry, max_revision): t
+                for t in topics
+            }
+            for future in as_completed(futures):
+                topic = futures[future]
+                result = future.result()
+                if result:
+                    results_map[topic] = result
 
-            # Step 2: Retrieve + Grade Documents (CRAG 루프)
-            context = self._retrieve(query, max_retry=max_retry)
-            if not context.strip():
-                continue
-
-            # Step 3: Draft Generation
-            draft = self._extract_draft(topic, context)
-            revision_count = 0
-
-            # Step 4: Self-Reflection Loop
-            while revision_count < max_revision:
-                reflection = self._self_reflect(topic, draft, context)
-                verdict = reflection.get("verdict", "APPROVED")
-
-                if verdict == "APPROVED":
-                    break
-                elif verdict == "REVISE":
-                    guidance = reflection.get("revision_guidance", "Improve data specificity")
-                    draft = self._revise_draft(topic, draft, guidance, context)
-                    revision_count += 1
-                elif verdict == "RETRIEVE":
-                    missing = reflection.get("missing_info", "")
-                    new_query = f"{self.COMPANY_NAME} {topic} {missing}"
-                    extra = self._retrieve(new_query, max_retry=max_retry)
-                    if extra:
-                        context = context + "\n\n---\n\n" + extra
-                    draft = self._extract_draft(topic, context)
-                    revision_count += 1
-                else:
-                    break
-
-            all_results.append(f"## {topic}\n\n{draft}")
-
-        # Step 5: Memory Update (상태로 반환)
-        return "\n\n".join(all_results)
+        return "\n\n".join(results_map[t] for t in topics if t in results_map)

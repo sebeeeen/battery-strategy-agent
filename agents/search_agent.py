@@ -123,29 +123,21 @@ class SearchAgent:
         raw_results = []
         sources = []
 
-        print(f"\n[Search Agent] Running {len(pairs)} balanced query pairs...")
-
         for pair in pairs:
             topic = pair.get("topic", "unknown")
             pos_query = pair.get("positive", "")
             neg_query = pair.get("negative", "")
 
-            print(f"  Topic: {topic}")
-
             pos_results, neg_results = [], []
 
-            # 긍정 쿼리
             if pos_query:
-                print(f"    [+] {pos_query[:60]}...")
                 pos_results = self._run_single_search(pos_query)
                 raw_results.extend(pos_results)
                 for r in pos_results:
                     if r.get("url"):
                         sources.append({"url": r["url"], "title": r.get("title", r["url"])})
 
-            # 부정 쿼리
             if neg_query:
-                print(f"    [-] {neg_query[:60]}...")
                 neg_results = self._run_single_search(neg_query)
                 raw_results.extend(neg_results)
                 for r in neg_results:

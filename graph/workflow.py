@@ -82,8 +82,9 @@ def supervisor_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
     # human_review를 거쳐 사람이 승인한 경우: Supervisor가 최종 라우팅을 결정
     if state.get("human_approved", False):
         requery = state.get("requery_instructions", [])
-        if requery:
-            tracker.update("supervisor", f"재검색 지시 {len(requery)}건 → search")
+        # max_iter 초과 시 requery 무시 → 즉시 generate_report (무한루프 차단)
+        if requery and iteration < max_iter:
+            tracker.update("supervisor", f"재검색 지시 {len(requery)}건 → search  (반복 {iteration+1}/{max_iter})")
             return {
                 **state,
                 "next_action": "search",
@@ -97,6 +98,7 @@ def supervisor_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
             "next_action": "generate_report",
             "iteration": iteration + 1,
             "coverage_matrix": state.get("coverage_matrix", {}),
+            "requery_instructions": [],   # 잔여 requery 초기화
         }
 
     agent = SupervisorAgent()
@@ -329,11 +331,18 @@ def human_review_node(state: BatteryAnalysisState) -> BatteryAnalysisState:
     print(f"  Critic: {verdict_line}")
 
     # HiTL 비활성화 모드: 자동 승인
+    # max_iterations 도달 시 critic의 requery_instructions를 제거하여
+    # supervisor가 search로 재라우팅하는 무한루프 차단
+    iteration = state.get("iteration", 0)
+    max_iter = state.get("max_iterations", 10)
     human_approved = state.get("human_approved", False)
     if not human_approved:
         human_approved = True
 
-    return {**state, "human_approved": human_approved}
+    update = {**state, "human_approved": human_approved}
+    if iteration >= max_iter:
+        update["requery_instructions"] = []   # 강제 초기화 → supervisor가 generate_report로 라우팅
+    return update
 
 
 def generate_report_node(state: BatteryAnalysisState) -> BatteryAnalysisState:

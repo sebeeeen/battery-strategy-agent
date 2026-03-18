@@ -247,9 +247,7 @@ class SupervisorAgent:
         Returns:
             (next_action, requery_instructions_or_None)
         """
-        # 최대 반복 초과
         if iteration >= max_iterations:
-            print(f"[Supervisor] Max iterations ({max_iterations}) reached.")
             return "generate_report", None
 
         # 기본 데이터 수집
@@ -264,21 +262,12 @@ class SupervisorAgent:
         if lges_context and catl_context and not search_results:
             contradictions = self.detect_contradictions(lges_context, catl_context)
             high_priority = [c for c in contradictions if c.get("priority") == "high"]
-
             if high_priority:
-                print(f"[Supervisor] {len(high_priority)} contradiction(s) detected → Fact-check search")
                 fact_check_queries = self.build_contradiction_search_queries(high_priority)
                 return "search", fact_check_queries
-
             return "search", None
 
-        # Critic 재검색 요청
         if critic_verdict == "NEEDS_MORE_SEARCH":
-            # 커버리지 갭 분석 추가 반영
-            self.assess_coverage(lges_context, catl_context, market_context, search_results)
-            gaps = self.get_coverage_gaps()
-            if gaps:
-                print(f"[Supervisor] Coverage gaps detected: {gaps[:3]}")
             return "search", None
 
         return "generate_report", None

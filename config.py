@@ -59,8 +59,8 @@ RETRIEVAL_K_MARKET = int(os.getenv("TOP_K_MARKET", "4")) # top-k for market cont
 RETRIEVAL_SCORE_THRESHOLD = 0.3   # minimum similarity score
 
 # ─── Agentic RAG Settings (from textbook workflow diagrams) ───────────────────
-MAX_RETRIEVAL_RETRY = 2           # max query rewrite retries (Search Evaluation)
-MAX_REVISION = 2                  # max draft revisions (Self-Reflection)
+MAX_RETRIEVAL_RETRY = 1           # max query rewrite retries (Search Evaluation)
+MAX_REVISION = 1                  # max draft revisions (Self-Reflection)
 
 # ─── Web Search Settings ──────────────────────────────────────────────────────
 SEARCH_MAX_RESULTS = 5            # results per query
